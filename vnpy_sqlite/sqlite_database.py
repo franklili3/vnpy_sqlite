@@ -114,7 +114,6 @@ class DbContractData(Model):
 
     symbol: str = CharField()
     exchange: str = CharField()
-    datetime: datetime = DateTimeField()
 
     name: str = CharField()
     product: str = CharField()
@@ -137,7 +136,7 @@ class DbContractData(Model):
 
     class Meta:
         database = db
-        indexes = ((("symbol", "exchange", "datetime"), True),)
+        indexes = ((("symbol", "exchange"), True),)
 
 class DbBarOverview(Model):
     """K线汇总数据表映射对象"""
@@ -248,7 +247,7 @@ class SqliteDatabase(BaseDatabase):
         data = []
 
         for contract in contracts:
-            contract.datetime = convert_tz(contract.datetime)
+            contract.option_expiry = convert_tz(contract.option_expiry)
 
             d = contract.__dict__
             d["exchange"] = d["exchange"].value
@@ -368,40 +367,41 @@ class SqliteDatabase(BaseDatabase):
         self,
         symbol: str,
         exchange: Exchange,
-        interval: Interval,
-        start: datetime,
-        end: datetime
+        start: datetime
     ) -> List[ContractData]:
         """读取合约数据"""
         s: ModelSelect = (
             DbContractData.select().where(
-                (DbBarData.symbol == symbol)
-                & (DbBarData.exchange == exchange.value)
-                & (DbBarData.interval == interval.value)
-                & (DbBarData.datetime >= start)
-                & (DbBarData.datetime <= end)
-            ).order_by(DbBarData.datetime)
+                (DbContractData.symbol == symbol)
+                & (DbContractData.exchange == exchange.value)
+                & (DbContractData.option_expiry >= start)
+            ).order_by(DbContractData.option_expiry)
         )
 
-        bars: List[BarData] = []
-        for db_bar in s:
-            bar = BarData(
-                symbol=db_bar.symbol,
-                exchange=Exchange(db_bar.exchange),
-                datetime=datetime.fromtimestamp(db_bar.datetime.timestamp(), DB_TZ),
-                interval=Interval(db_bar.interval),
-                volume=db_bar.volume,
-                turnover=db_bar.turnover,
-                open_interest=db_bar.open_interest,
-                open_price=db_bar.open_price,
-                high_price=db_bar.high_price,
-                low_price=db_bar.low_price,
-                close_price=db_bar.close_price,
+        contracts: List[ContractData] = []
+        for db_contract in s:
+            contract = ContractData(
+                symbol=db_contract.symbol,
+                exchange=Exchange(db_contract.exchange),
+                option_expiry=datetime.fromtimestamp(db_contract.option_expiry.timestamp(), DB_TZ),
+                name=db_contract.name,
+                product=db_contract.product,
+                size=db_contract.size,
+                pricetick=db_contract.pricetick,
+                min_volume=db_contract.min_volume,
+                stop_supported=db_contract.stop_supported,
+                net_position=db_contract.net_position,
+                history_data=db_contract.history_data,
+                option_strike=db_contract.option_strike,
+                option_underlying=db_contract.option_underlying,
+                option_type=db_contract.option_type,
+                option_portfolio=db_contract.option_portfolio,
+                option_index=db_contract.option_index,
                 gateway_name="DB"
             )
-            bars.append(bar)
+            contracts.append(contract)
 
-        return bars
+        return contracts
 
     def delete_bar_data(
         self,
