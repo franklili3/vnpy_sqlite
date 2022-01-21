@@ -241,27 +241,6 @@ class SqliteDatabase(BaseDatabase):
 
         return True
 
-    def save_contract_data(self, contracts: List[ContractData]) -> bool:
-        """保存CONTRACT数据"""
-        # 将ContractData数据转换为字典，并调整时区
-        data = []
-
-        for contract in contracts:
-            contract.option_expiry = convert_tz(contract.option_expiry)
-
-            d = contract.__dict__
-            d["exchange"] = d["exchange"].value
-            d.pop("gateway_name")
-            d.pop("vt_symbol")
-            data.append(d)
-
-        # 使用upsert操作将数据更新到数据库中
-        with self.db.atomic():
-            for c in chunked(data, 10):
-                DbContractData.insert_many(c).on_conflict_replace().execute()
-
-        return True
-
     def load_bar_data(
         self,
         symbol: str,
@@ -362,46 +341,6 @@ class SqliteDatabase(BaseDatabase):
             ticks.append(tick)
 
         return ticks
-
-    def load_contract_data(
-        self,
-        symbol: str,
-        exchange: Exchange,
-        start: datetime
-    ) -> List[ContractData]:
-        """读取合约数据"""
-        s: ModelSelect = (
-            DbContractData.select().where(
-                (DbContractData.symbol == symbol)
-                & (DbContractData.exchange == exchange.value)
-                & (DbContractData.option_expiry >= start)
-            ).order_by(DbContractData.option_expiry)
-        )
-
-        contracts: List[ContractData] = []
-        for db_contract in s:
-            contract = ContractData(
-                symbol=db_contract.symbol,
-                exchange=Exchange(db_contract.exchange),
-                option_expiry=datetime.fromtimestamp(db_contract.option_expiry.timestamp(), DB_TZ),
-                name=db_contract.name,
-                product=db_contract.product,
-                size=db_contract.size,
-                pricetick=db_contract.pricetick,
-                min_volume=db_contract.min_volume,
-                stop_supported=db_contract.stop_supported,
-                net_position=db_contract.net_position,
-                history_data=db_contract.history_data,
-                option_strike=db_contract.option_strike,
-                option_underlying=db_contract.option_underlying,
-                option_type=db_contract.option_type,
-                option_portfolio=db_contract.option_portfolio,
-                option_index=db_contract.option_index,
-                gateway_name="DB"
-            )
-            contracts.append(contract)
-
-        return contracts
 
     def delete_bar_data(
         self,
